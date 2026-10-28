@@ -40,6 +40,10 @@ export class Env {
   GEMINI_MODEL: string = 'gemini-3.8-flash';
 
   @IsOptional()
+  @IsString()
+  GEMINI_FALLBACK_MODEL: string = 'gemini-3.5-flash-lite';
+
+  @IsOptional()
   @IsIn(['true', 'false'])
   ALLOW_CHANGE_SIMULATION?: string;
 

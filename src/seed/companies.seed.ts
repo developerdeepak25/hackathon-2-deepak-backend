@@ -11,4 +11,10 @@ export const COMPANIES_SEED = [
     { name: 'X', slug: 'x', category: 'social', policyUrl: 'https://x.com/en/privacy' },
     { name: 'Instagram', slug: 'instagram', category: 'social', policyUrl: 'https://privacycenter.instagram.com/policy' },
     { name: 'Spotify', slug: 'spotify', category: 'streaming', policyUrl: 'https://www.spotify.com/legal/privacy-policy/' },
+    {
+      name: 'PolicyHawk Test Company',
+      slug: 'test-company',
+      category: 'workplace',
+      policyUrl: 'https://telegram.org/privacy',
+    },
   ];

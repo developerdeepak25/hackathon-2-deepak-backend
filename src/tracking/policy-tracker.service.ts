@@ -14,11 +14,15 @@ import {
   PolicyVersion,
   PolicyVersionDocument,
 } from '../schema/policy-version.schema.js';
+import { TEST_COMPANY_SLUG } from '../utils/constant.js';
 import {
   PolicyChangeAiService,
   type PolicyChangeAnalysis,
   POLICY_CHANGE_AI_TIMEOUT_MS,
+  explainGeminiFailure,
 } from './policy-change-ai.service.js';
+import { buildPolicyExcerpts } from './policy-excerpts.js';
+import { TEST_COMPANY_PRIOR_TEXT } from './test-company-prior.js';
 
 const FETCH_TIMEOUT_MS = 20_000;
 const MIN_POLICY_TEXT_LENGTH = 500;
@@ -45,7 +49,7 @@ export class PolicyTrackerService {
     private readonly policyChangeAiService: PolicyChangeAiService,
   ) {}
 
-  /** Creates a sample-only diff from a synthetic prior copy of the live policy. */
+  /** Compares the test company's live policy with the predefined earlier fixture. */
   async simulateChange(
     slug: string,
   ): Promise<{
@@ -53,15 +57,23 @@ export class PolicyTrackerService {
     status: 'changed';
     isSample: true;
     aiStatus: 'ok' | 'fallback';
+    aiNotice: string | null;
     changeId: string;
     summary: string;
     whatItMeansForYou: string;
     importance: string;
     tags: string[];
     changedSections: string[];
+    fromExcerpt: string;
+    toExcerpt: string;
+    removedSpan: string;
+    addedSpan: string;
   }> {
+    if (slug !== TEST_COMPANY_SLUG) {
+      throw new NotFoundException(`Company '${slug}' was not found`);
+    }
     const company = await this.companyModel
-      .findOne({ slug, isActive: true })
+      .findOne({ slug: TEST_COMPANY_SLUG, isActive: true })
       .exec();
     if (!company) {
       throw new NotFoundException(`Company '${slug}' was not found`);
@@ -82,20 +94,21 @@ export class PolicyTrackerService {
         { cause: error },
       );
     }
-    const simulatedPreviousText =
-      this.createSimulatedPreviousText(currentText);
+    const simulatedPreviousText = this.normalizeText(TEST_COMPANY_PRIOR_TEXT);
     const previousHash = createHash('sha256')
       .update(simulatedPreviousText)
       .digest('hex');
     const currentHash = createHash('sha256').update(currentText).digest('hex');
 
     let analysis: PolicyChangeAnalysis | undefined;
+    let aiNotice: string | null = null;
     try {
       analysis = await this.policyChangeAiService.analyzeChange(
         simulatedPreviousText,
         currentText,
       );
     } catch (error) {
+      aiNotice = explainGeminiFailure(error);
       this.logger.warn(
         `AI analysis unavailable for ${company.slug} simulation: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -126,9 +139,10 @@ export class PolicyTrackerService {
       detectedAt,
       summary:
         analysis?.summary ??
-        'Policy text changed. Review the previous and current versions.',
+        'Policy text changed. The AI explanation is unavailable.',
       whatItMeansForYou:
         analysis?.whatItMeansForYou ??
+        aiNotice ??
         'The captured policy text differs from the previous version. The impact has not been assessed.',
       importance: analysis?.importance ?? 'medium',
       tags: analysis?.tags ?? ['other'],
@@ -137,6 +151,10 @@ export class PolicyTrackerService {
       isSample: true,
     });
 
+    const excerpts = buildPolicyExcerpts(
+      simulatedPreviousText,
+      currentText,
+    );
     this.logger.warn(
       `${company.slug}: sample change simulation saved as ${String(change._id)}; real policy check state was not modified`,
     );
@@ -145,24 +163,22 @@ export class PolicyTrackerService {
       status: 'changed',
       isSample: true,
       aiStatus: change.aiStatus,
+      aiNotice,
       changeId: String(change._id),
       summary: change.summary,
       whatItMeansForYou: change.whatItMeansForYou,
       importance: change.importance,
       tags: change.tags,
       changedSections: change.changedSections,
+      ...excerpts,
     };
-  }
-
-  /** Adds realistic prior-policy clauses so the live policy produces a substantive demo diff. */
-  private createSimulatedPreviousText(currentText: string): string {
-    return this.normalizeText(
-      `${currentText}\n\nAdvertising and analytics\nWe may share device identifiers and information about your activity with analytics and advertising partners to measure the effectiveness of campaigns and show you relevant ads. These partners may combine this information with information collected from other services.\n\nRetention of activity information\nWe retain activity and device information for up to 24 months, after which we delete or de-identify it unless retention is required by law.`,
-    );
   }
 
   /** Fetches one company's policy and stores a version only when its normalized content changes. */
   async checkCompany(slug: string): Promise<PolicyCheckResult> {
+    if (slug === TEST_COMPANY_SLUG) {
+      throw new NotFoundException(`Company '${slug}' was not found`);
+    }
     const fetchedAt = new Date();
     // Use UTC so the daily limit behaves the same regardless of where the API is hosted.
     const utcDayStart = new Date(
@@ -303,14 +319,16 @@ export class PolicyTrackerService {
       // AI is only called for a real content change. Its failure must not discard
       // either saved version, so the change record always gets a clear fallback.
       let analysis: PolicyChangeAnalysis | undefined;
+      let aiNotice: string | null = null;
       try {
         analysis = await this.policyChangeAiService.analyzeChange(
           latestVersion.text,
           text,
         );
       } catch (error) {
+        aiNotice = explainGeminiFailure(error);
         this.logger.warn(
-          `AI analysis unavailable for ${company.slug}: ${error instanceof Error ? error.message : String(error)}`,
+          `AI analysis unavailable for ${company.slug}: ${aiNotice}`,
         );
       }
 
@@ -330,9 +348,10 @@ export class PolicyTrackerService {
             detectedAt: fetchedAt,
             summary:
               analysis?.summary ??
-              'Policy text changed. Review the previous and current versions.',
+              'Policy text changed. The AI explanation is unavailable.',
             whatItMeansForYou:
               analysis?.whatItMeansForYou ??
+              aiNotice ??
               'The captured policy text differs from the previous version. The impact has not been assessed.',
             importance: analysis?.importance ?? 'medium',
             tags: analysis?.tags ?? ['other'],

@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Company, CompanyDocument } from '../schema/company.schema.js';
 import { JobRun, JobRunDocument } from '../schema/job-run.schema.js';
+import { TEST_COMPANY_SLUG } from '../utils/constant.js';
 import { PolicyTrackerService } from './policy-tracker.service.js';
 
 @Injectable()
@@ -17,11 +18,35 @@ export class PolicyRunService {
     private readonly policyTracker: PolicyTrackerService,
   ) {}
 
+  /** Returns the newest job run for the tracker, or null when none has been stored. */
+  async getLatest() {
+    const job = await this.jobRunModel
+      .findOne()
+      .sort({ startedAt: -1 })
+      .lean()
+      .exec();
+    if (!job) {
+      return null;
+    }
+    return {
+      status: job.status,
+      startedAt: new Date(job.startedAt).toISOString(),
+      finishedAt: job.finishedAt
+        ? new Date(job.finishedAt).toISOString()
+        : null,
+      companiesChecked: job.companiesChecked,
+      changesFound: job.changesFound,
+    };
+  }
+
   /** Checks all active companies, or one selected slug, and stores one summary job record. */
   async run(companySlug?: string, trigger: 'manual' | 'cron' = 'manual') {
+    if (companySlug === TEST_COMPANY_SLUG) {
+      throw new NotFoundException(`Company '${companySlug}' was not found`);
+    }
     const companyFilter = companySlug
       ? { slug: companySlug, isActive: true }
-      : { isActive: true };
+      : { isActive: true, slug: { $ne: TEST_COMPANY_SLUG } };
     const companies = await this.companyModel
       .find(companyFilter, { slug: 1 })
       .sort({ name: 1 })

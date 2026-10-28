@@ -5,6 +5,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import express from 'express';
 import { AppModule } from './app.module.js';
 import type { Env } from './config/env.validation.js';
+import { seedDatabase } from './seed/seed-database.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bodyParser: false });
@@ -31,6 +32,8 @@ async function bootstrap() {
     .build();
   const openApiDocument = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api/docs', app, openApiDocument);
+
+  await seedDatabase(app);
 
   const port = config.get('PORT', { infer: true });
   await app.listen(port);

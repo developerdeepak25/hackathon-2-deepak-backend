@@ -53,6 +53,7 @@ export class CompanyController {
                 enum: ['ok', 'failed', 'never'],
               },
               todayChangeCount: { type: 'integer', example: 1 },
+              changeCount: { type: 'integer', example: 3 },
             },
           },
         },
@@ -61,6 +62,41 @@ export class CompanyController {
   })
   async listCompanies() {
     return this.companyService.listCompanies();
+  }
+
+  @Get(':slug/timeline')
+  @ApiOperation({
+    summary: 'List a company’s policy versions and changes',
+    description:
+      'Returns version metadata and change summaries across all dates. Policy text is omitted.',
+  })
+  @ApiParam({ name: 'slug', example: 'whatsapp' })
+  @ApiOkResponse({ description: 'Company timeline, newest first.' })
+  @ApiNotFoundResponse({
+    description: 'No active company exists with this slug.',
+  })
+  async getCompanyTimeline(@Param('slug') slug: string) {
+    return this.companyService.getCompanyTimeline(slug);
+  }
+
+  @Get(':slug/changes/:changeId')
+  @ApiOperation({
+    summary: 'Get one policy change with capped excerpts',
+  })
+  @ApiParam({ name: 'slug', example: 'whatsapp' })
+  @ApiParam({ name: 'changeId', example: '66f1a9b23d7a2e4b8c10d456' })
+  @ApiOkResponse({
+    description:
+      'Change summary plus capped previous/current excerpts and added or removed spans.',
+  })
+  @ApiNotFoundResponse({
+    description: 'The company or change was not found.',
+  })
+  async getCompanyChange(
+    @Param('slug') slug: string,
+    @Param('changeId') changeId: string,
+  ) {
+    return this.companyService.getCompanyChange(slug, changeId);
   }
 
   @Get(':slug/changes')

@@ -83,11 +83,11 @@ export class PolicyCheckController {
 
   @Post(':slug/simulate-change')
   @ApiOperation({
-    summary: 'Simulate a policy change against the current live policy',
+    summary: 'Simulate a policy change for the test company',
     description:
-      'Development-only. Fetches the live policy, creates a synthetic prior version internally, and stores both versions and the resulting change as sample data. No request body is required. Does not update daily check status or real policy versions.',
+      'Development-only. Only test-company is accepted. Fetches that company live policy, compares it with the predefined earlier fixture, and stores both versions and the resulting change as sample data. Does not update daily check status.',
   })
-  @ApiParam({ name: 'slug', example: 'whatsapp' })
+  @ApiParam({ name: 'slug', example: 'test-company' })
   @ApiHeader({
     name: 'x-job-secret',
     required: true,

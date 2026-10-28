@@ -1,5 +1,6 @@
 import {
   Controller,
+  Get,
   Headers,
   Post,
   Query,
@@ -27,6 +28,19 @@ export class PolicyRunController {
     private readonly policyRunService: PolicyRunService,
     private readonly config: ConfigService<Env, true>,
   ) {}
+
+  @Get('latest')
+  @ApiOperation({
+    summary: 'Get the newest policy-check job',
+    description:
+      'Public read of the latest job run. Returns null when no run has been stored.',
+  })
+  @ApiOkResponse({
+    description: 'Latest job summary, or null.',
+  })
+  async latest() {
+    return this.policyRunService.getLatest();
+  }
 
   @Post('run')
   @ApiOperation({

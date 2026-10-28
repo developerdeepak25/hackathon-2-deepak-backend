@@ -4,13 +4,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Change, ChangeDocument } from '../schema/change.schema.js';
 import { Company, CompanyDocument } from '../schema/company.schema.js';
 import {
   PolicyVersion,
   PolicyVersionDocument,
 } from '../schema/policy-version.schema.js';
+import { TEST_COMPANY_SLUG } from '../utils/constant.js';
+import { buildPolicyExcerpts } from '../tracking/policy-excerpts.js';
 
 export interface CompanyListEntry {
   id: string;
@@ -23,6 +25,7 @@ export interface CompanyListEntry {
   lastChangedAt: Date | null;
   lastFetchStatus: 'ok' | 'failed' | 'never';
   todayChangeCount: number;
+  changeCount: number;
 }
 
 @Injectable()
@@ -47,10 +50,10 @@ export class CompanyService {
     todayEnd.setUTCDate(todayEnd.getUTCDate() + 1);
 
     // Fetch the small company list and grouped change counts concurrently.
-    const [companies, dailyCounts] = await Promise.all([
+    const [companies, dailyCounts, totalCounts] = await Promise.all([
       this.companyModel
         .find(
-          { isActive: true },
+          { isActive: true, slug: { $ne: TEST_COMPANY_SLUG } },
           {
             _id: 1,
             slug: 1,
@@ -84,12 +87,26 @@ export class CompanyService {
           },
         ])
         .exec(),
+      this.changeModel
+        .aggregate<{ _id: string; count: number }>([
+          {
+            $group: {
+              _id: '$companyId',
+              count: { $sum: 1 },
+            },
+          },
+        ])
+        .exec(),
     ]);
 
     // Convert aggregation results into constant-time lookups while formatting each company.
     const countByCompany = new Map<string, number>();
     for (const item of dailyCounts) {
       countByCompany.set(String(item._id), item.count);
+    }
+    const totalByCompany = new Map<string, number>();
+    for (const item of totalCounts) {
+      totalByCompany.set(String(item._id), item.count);
     }
 
     return {
@@ -105,6 +122,7 @@ export class CompanyService {
         lastChangedAt: company.lastChangedAt ?? null,
         lastFetchStatus: company.lastFetchStatus,
         todayChangeCount: countByCompany.get(String(company._id)) ?? 0,
+        changeCount: totalByCompany.get(String(company._id)) ?? 0,
       })),
     };
   }
@@ -211,6 +229,172 @@ export class CompanyService {
         fromVersionText: versionTextMap.get(String(change.fromVersionId)) ?? '',
         toVersionText: versionTextMap.get(String(change.toVersionId)) ?? '',
       })),
+    };
+  }
+
+  /** Returns stored versions and changes for one company without policy bodies. */
+  async getCompanyTimeline(slug: string) {
+    const company = await this.findActiveCompany(slug);
+    const [versions, changes] = await Promise.all([
+      this.policyVersionModel
+        .aggregate<{
+          _id: Types.ObjectId;
+          fetchedAt: Date;
+          isSample: boolean;
+          textLength: number;
+        }>([
+          { $match: { companyId: company._id } },
+          {
+            $project: {
+              fetchedAt: 1,
+              isSample: 1,
+              textLength: { $strLenCP: '$text' },
+            },
+          },
+          { $sort: { fetchedAt: -1 } },
+        ])
+        .exec(),
+      this.changeModel
+        .find({ companyId: company._id })
+        .sort({ detectedAt: -1 })
+        .lean()
+        .exec(),
+    ]);
+
+    return {
+      company: this.toCompanyHeader(company),
+      versions: versions.map((version) => ({
+        id: String(version._id),
+        fetchedAt: new Date(version.fetchedAt).toISOString(),
+        isSample: version.isSample,
+        textLength: version.textLength ?? 0,
+      })),
+      changes: changes.map((change) => ({
+        id: String(change._id),
+        detectedAt: new Date(change.detectedAt).toISOString(),
+        summary: change.summary,
+        whatItMeansForYou: change.whatItMeansForYou,
+        importance: change.importance,
+        tags: change.tags ?? [],
+        changedSections: change.changedSections ?? [],
+        aiStatus: change.aiStatus,
+        isSample: change.isSample,
+        fromVersionId: String(change.fromVersionId),
+        toVersionId: String(change.toVersionId),
+      })),
+    };
+  }
+
+  /** Returns one change with capped diff excerpts for the report page. */
+  async getCompanyChange(slug: string, changeId: string) {
+    const company = await this.findActiveCompany(slug);
+    if (!Types.ObjectId.isValid(changeId)) {
+      throw new NotFoundException(`Change '${changeId}' was not found`);
+    }
+
+    const change = await this.changeModel
+      .findOne({ _id: changeId, companyId: company._id })
+      .lean()
+      .exec();
+    if (!change) {
+      throw new NotFoundException(`Change '${changeId}' was not found`);
+    }
+
+    const versions = await this.policyVersionModel
+      .find(
+        { _id: { $in: [change.fromVersionId, change.toVersionId] } },
+        { _id: 1, text: 1 },
+      )
+      .lean()
+      .exec();
+    const versionText = new Map(
+      versions.map((version) => [String(version._id), version.text ?? '']),
+    );
+    const excerpts = buildPolicyExcerpts(
+      versionText.get(String(change.fromVersionId)) ?? '',
+      versionText.get(String(change.toVersionId)) ?? '',
+    );
+
+    return {
+      company: this.toCompanyHeader(company),
+      change: {
+        id: String(change._id),
+        detectedAt: new Date(change.detectedAt).toISOString(),
+        summary: change.summary,
+        whatItMeansForYou: change.whatItMeansForYou,
+        importance: change.importance,
+        tags: change.tags ?? [],
+        changedSections: change.changedSections ?? [],
+        aiStatus: change.aiStatus,
+        isSample: change.isSample,
+        fromVersionId: String(change.fromVersionId),
+        toVersionId: String(change.toVersionId),
+        ...excerpts,
+      },
+    };
+  }
+
+  /** Returns the newest changes across companies for the tracker feed. */
+  async listRecentChanges(limit = 10) {
+    const safeLimit = Math.min(25, Math.max(1, Math.trunc(limit) || 10));
+    const changes = await this.changeModel
+      .find()
+      .sort({ detectedAt: -1 })
+      .limit(safeLimit)
+      .lean()
+      .exec();
+    const companyIds = [...new Set(changes.map((change) => String(change.companyId)))];
+    const companies = await this.companyModel
+      .find({ _id: { $in: companyIds } }, { _id: 1, slug: 1, name: 1 })
+      .lean()
+      .exec();
+    const companyById = new Map(
+      companies.map((company) => [String(company._id), company]),
+    );
+
+    return {
+      changes: changes.map((change) => {
+        const company = companyById.get(String(change.companyId));
+        return {
+          id: String(change._id),
+          companySlug: company?.slug ?? '',
+          companyName: company?.name ?? '',
+          detectedAt: new Date(change.detectedAt).toISOString(),
+          summary: change.summary,
+          importance: change.importance,
+          isSample: change.isSample,
+          aiStatus: change.aiStatus,
+        };
+      }),
+    };
+  }
+
+  /** Loads an active company, including the demo company when requested by slug. */
+  private async findActiveCompany(slug: string) {
+    const company = await this.companyModel
+      .findOne({ slug, isActive: true })
+      .lean()
+      .exec();
+    if (!company) {
+      throw new NotFoundException(`Company '${slug}' was not found`);
+    }
+    return company;
+  }
+
+  /** Shared company header for timeline and change detail responses. */
+  private toCompanyHeader(company: {
+    _id: unknown;
+    slug: string;
+    name: string;
+    category: string;
+    policyUrl: string;
+  }) {
+    return {
+      id: String(company._id),
+      slug: company.slug,
+      name: company.name,
+      category: company.category,
+      policyUrl: company.policyUrl,
     };
   }
 
