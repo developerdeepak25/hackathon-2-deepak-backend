@@ -1,0 +1,34 @@
+name: Daily policy check
+
+on:
+  schedule:
+    - cron: '15 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-policy-check
+  cancel-in-progress: false
+
+jobs:
+  check-policies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Trigger policy check
+        env:
+          POLICYHAWK_API_URL: ${{ secrets.POLICYHAWK_API_URL }}
+          JOB_SECRET: ${{ secrets.JOB_SECRET }}
+        run: |
+          if [ -z "$POLICYHAWK_API_URL" ] || [ -z "$JOB_SECRET" ]; then
+            echo "POLICYHAWK_API_URL and JOB_SECRET repository secrets are required."
+            exit 1
+          fi
+
+          curl --fail-with-body --silent --show-error \
+            --max-time 2400 \
+            --request POST \
+            --header "x-job-secret: $JOB_SECRET" \
+            "$POLICYHAWK_API_URL/api/jobs/run"
