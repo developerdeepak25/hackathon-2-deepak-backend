@@ -85,7 +85,7 @@ export class PolicyCheckController {
   @ApiOperation({
     summary: 'Simulate a policy change for the test company',
     description:
-      'Development-only. Only test-company is accepted. Fetches that company live policy, compares it with the predefined earlier fixture, and stores both versions and the resulting change as sample data. Does not update daily check status.',
+      'Only test-company is accepted. Fetches that company live policy, compares it with the predefined earlier fixture, and returns the same report fields as a stored change. Nothing is written to the database.',
   })
   @ApiParam({ name: 'slug', example: 'test-company' })
   @ApiHeader({
@@ -98,8 +98,7 @@ export class PolicyCheckController {
     description: 'The job secret is missing or invalid.',
   })
   @ApiServiceUnavailableResponse({
-    description:
-      'Simulation is disabled or the live policy could not be fetched.',
+    description: 'The live policy could not be fetched.',
   })
   @ApiNotFoundResponse({
     description: 'No active company exists with this slug.',
@@ -116,16 +115,6 @@ export class PolicyCheckController {
     }
     if (suppliedSecret !== expectedSecret) {
       throw new UnauthorizedException('Invalid job secret');
-    }
-
-    const enabled = this.config.get('ALLOW_CHANGE_SIMULATION', {
-      infer: true,
-    });
-    const environment = this.config.get('NODE_ENV', { infer: true });
-    if (enabled !== 'true' || environment === 'production') {
-      throw new ServiceUnavailableException(
-        'Change simulation is disabled; enable ALLOW_CHANGE_SIMULATION=true in non-production only',
-      );
     }
 
     return this.policyTracker.simulateChange(slug);

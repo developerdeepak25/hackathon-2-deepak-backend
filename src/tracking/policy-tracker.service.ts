@@ -58,7 +58,6 @@ export class PolicyTrackerService {
     isSample: true;
     aiStatus: 'ok' | 'fallback';
     aiNotice: string | null;
-    changeId: string;
     summary: string;
     whatItMeansForYou: string;
     importance: string;
@@ -95,10 +94,6 @@ export class PolicyTrackerService {
       );
     }
     const simulatedPreviousText = this.normalizeText(TEST_COMPANY_PRIOR_TEXT);
-    const previousHash = createHash('sha256')
-      .update(simulatedPreviousText)
-      .digest('hex');
-    const currentHash = createHash('sha256').update(currentText).digest('hex');
 
     let analysis: PolicyChangeAnalysis | undefined;
     let aiNotice: string | null = null;
@@ -114,62 +109,28 @@ export class PolicyTrackerService {
       );
     }
 
-    const detectedAt = new Date();
-    const [fromVersion, toVersion] = await Promise.all([
-      this.policyVersionModel.create({
-        companyId: company._id,
-        fetchedAt: detectedAt,
-        text: simulatedPreviousText,
-        contentHash: previousHash,
-        isSample: true,
-      }),
-      this.policyVersionModel.create({
-        companyId: company._id,
-        fetchedAt: detectedAt,
-        text: currentText,
-        contentHash: currentHash,
-        isSample: true,
-      }),
-    ]);
-
-    const change = await this.changeModel.create({
-      companyId: company._id,
-      fromVersionId: fromVersion._id,
-      toVersionId: toVersion._id,
-      detectedAt,
-      summary:
-        analysis?.summary ??
-        'Policy text changed. The AI explanation is unavailable.',
-      whatItMeansForYou:
-        analysis?.whatItMeansForYou ??
-        aiNotice ??
-        'The captured policy text differs from the previous version. The impact has not been assessed.',
-      importance: analysis?.importance ?? 'medium',
-      tags: analysis?.tags ?? ['other'],
-      changedSections: analysis?.changedSections ?? [],
-      aiStatus: analysis ? 'ok' : 'fallback',
-      isSample: true,
-    });
-
-    const excerpts = buildPolicyExcerpts(
-      simulatedPreviousText,
-      currentText,
-    );
+    const summary =
+      analysis?.summary ??
+      'Policy text changed. The AI explanation is unavailable.';
+    const whatItMeansForYou =
+      analysis?.whatItMeansForYou ??
+      aiNotice ??
+      'The captured policy text differs from the previous version. The impact has not been assessed.';
+    const excerpts = buildPolicyExcerpts(simulatedPreviousText, currentText);
     this.logger.warn(
-      `${company.slug}: sample change simulation saved as ${String(change._id)}; real policy check state was not modified`,
+      `${company.slug}: simulation compared the live policy with the prior fixture and was not stored`,
     );
     return {
       companySlug: company.slug,
       status: 'changed',
       isSample: true,
-      aiStatus: change.aiStatus,
+      aiStatus: analysis ? 'ok' : 'fallback',
       aiNotice,
-      changeId: String(change._id),
-      summary: change.summary,
-      whatItMeansForYou: change.whatItMeansForYou,
-      importance: change.importance,
-      tags: change.tags,
-      changedSections: change.changedSections,
+      summary,
+      whatItMeansForYou,
+      importance: analysis?.importance ?? 'medium',
+      tags: analysis?.tags ?? ['other'],
+      changedSections: analysis?.changedSections ?? [],
       ...excerpts,
     };
   }
