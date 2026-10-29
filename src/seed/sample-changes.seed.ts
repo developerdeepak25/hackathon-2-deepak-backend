@@ -19,14 +19,14 @@ export const SAMPLE_CHANGES = [
     previousText: [
       'WhatsApp privacy policy.',
       'We collect your phone number and profile name to create an account.',
-      'Private messages are stored on your device. We do not use private message content to train artificial intelligence models.',
+      'Private messages stay on your device, and we do not use message content to train artificial intelligence models.',
       'We do not share your message content with other companies for advertising.',
       'You can delete your account in settings. Undelivered messages are then removed from our servers.',
     ].join('\n\n'),
     currentText: [
       'WhatsApp privacy policy.',
       'We collect your phone number and profile name to create an account.',
-      'Private messages may be used to train and improve our artificial intelligence models, including photos and voice notes you send.',
+      'Private messages, including photos and voice notes, may be used to train and improve our artificial intelligence models.',
       'We may share message content and usage information with other companies in our group so they can personalize ads and product suggestions.',
       'You can delete your account in settings. Undelivered messages are then removed from our servers.',
     ].join('\n\n'),

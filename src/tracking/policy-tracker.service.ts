@@ -21,9 +21,10 @@ import {
   POLICY_CHANGE_AI_TIMEOUT_MS,
   explainGeminiFailure,
 } from './policy-change-ai.service.js';
-import { buildPolicyExcerpts } from './policy-excerpts.js';
+import { buildPolicyExcerpts, findPolicySentence } from './policy-excerpts.js';
 import {
   WHATSAPP_MODIFIED_POLICY_TEXT,
+  WHATSAPP_SIMULATION_CLAUSES,
   WHATSAPP_SIMULATION_POLICY_URL,
 } from './whatsapp-simulation.js';
 
@@ -91,13 +92,19 @@ export class PolicyTrackerService {
       );
     }
     const modifiedText = this.normalizeText(WHATSAPP_MODIFIED_POLICY_TEXT);
+    const clausePairs = WHATSAPP_SIMULATION_CLAUSES.map((clause) => ({
+      previous: clause.previous,
+      current: findPolicySentence(liveText, clause.hints),
+    })).filter((pair) => pair.current.length > 0);
+    const previousClauses = clausePairs.map((pair) => pair.previous).join('\n\n');
+    const currentClauses = clausePairs.map((pair) => pair.current).join('\n\n');
 
     let analysis: PolicyChangeAnalysis | undefined;
     let aiNotice: string | null = null;
     try {
       analysis = await this.policyChangeAiService.analyzeChange(
-        modifiedText,
-        liveText,
+        previousClauses || modifiedText,
+        currentClauses || liveText,
       );
     } catch (error) {
       aiNotice = explainGeminiFailure(error);
@@ -113,7 +120,15 @@ export class PolicyTrackerService {
       analysis?.whatItMeansForYou ??
       aiNotice ??
       'The captured policy text differs from the previous version. The impact has not been assessed.';
-    const excerpts = buildPolicyExcerpts(modifiedText, liveText);
+    const excerpts =
+      previousClauses && currentClauses
+        ? {
+            fromExcerpt: previousClauses,
+            toExcerpt: currentClauses,
+            removedSpan: previousClauses,
+            addedSpan: currentClauses,
+          }
+        : buildPolicyExcerpts(modifiedText, liveText);
     this.logger.warn(
       'WhatsApp simulation compared the live policy with the hardcoded modified copy and was not stored',
     );
