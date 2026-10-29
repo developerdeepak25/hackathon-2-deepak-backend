@@ -2,9 +2,8 @@
  * Builds short side-by-side excerpts from two policy texts for API responses.
  */
 
-import { diffWords } from 'diff';
-
 const EXCERPT_LIMIT = 2_000;
+const MAX_SENTENCES = 4;
 
 export interface PolicyExcerpts {
   fromExcerpt: string;
@@ -15,34 +14,69 @@ export interface PolicyExcerpts {
 
 /** Caps a string so change reports do not return full policy documents. */
 function cap(value: string): string {
-  const trimmed = value.replace(/\s+/g, ' ').trim();
+  const trimmed = value.replace(/[ \t]+/g, ' ').trim();
   if (trimmed.length <= EXCERPT_LIMIT) {
     return trimmed;
   }
   return `${trimmed.slice(0, EXCERPT_LIMIT)}…`;
 }
 
-/** Returns capped previous/current excerpts plus the joined added and removed spans. */
+/** Drops page chrome and fragments that are not a readable policy sentence. */
+function isUsefulSentence(sentence: string): boolean {
+  const words = sentence.split(/\s+/);
+  if (words.length < 6 || sentence.length < 30) {
+    return false;
+  }
+  if (words.some((word) => word.length > 28)) {
+    return false;
+  }
+  if (
+    /closenew|try itwhatsapp|archived versions|policyhawk demonstration|did not publish this section/i.test(
+      sentence,
+    )
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/** Splits policy text into sentences that can stand alone in a report. */
+function usefulSentences(text: string): string[] {
+  return text
+    .replace(/\s+/g, ' ')
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(isUsefulSentence);
+}
+
+function sentenceKey(sentence: string): string {
+  return sentence.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+/** Returns the sentences present on one side of the comparison and missing on the other. */
+function differingSentences(source: string[], other: string[]): string[] {
+  const otherKeys = new Set(other.map(sentenceKey));
+  return source
+    .filter((sentence) => !otherKeys.has(sentenceKey(sentence)))
+    .slice(0, MAX_SENTENCES);
+}
+
+/** Returns capped previous/current excerpts plus the sentences that differ. */
 export function buildPolicyExcerpts(
   previousText: string,
   currentText: string,
 ): PolicyExcerpts {
-  const parts = diffWords(previousText, currentText);
-  const removed: string[] = [];
-  const added: string[] = [];
-
-  for (const part of parts) {
-    if (part.removed) {
-      removed.push(part.value);
-    } else if (part.added) {
-      added.push(part.value);
-    }
-  }
+  const previousSentences = usefulSentences(previousText);
+  const currentSentences = usefulSentences(currentText);
+  const removed = differingSentences(previousSentences, currentSentences);
+  const added = differingSentences(currentSentences, previousSentences);
+  const removedSpan = removed.join('\n\n');
+  const addedSpan = added.join('\n\n');
 
   return {
-    fromExcerpt: cap(previousText),
-    toExcerpt: cap(currentText),
-    removedSpan: cap(removed.join(' ')),
-    addedSpan: cap(added.join(' ')),
+    fromExcerpt: cap(removedSpan || previousText),
+    toExcerpt: cap(addedSpan || currentText),
+    removedSpan,
+    addedSpan,
   };
 }

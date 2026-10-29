@@ -25,6 +25,8 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+Project handover: [../docs/project-context.md](../docs/project-context.md).
+
 ## Policy checks
 
 Policy checks can be triggered from Swagger at `/api/docs`:
@@ -45,7 +47,11 @@ When `GEMINI_API_KEY` is configured, Gemini analyzes the added and removed polic
 Set the Gemini keys in `.env` to enable AI explanations. The integration uses Google's official `@google/genai` SDK and Interactions API. `GEMINI_MODEL` defaults to `gemini-3.5-flash-lite`. If that model is down or times out, the API tries `GEMINI_FALLBACK_MODEL` (`gemini-3.1-flash-lite`). `gemini-3.8-flash` is not used. The interaction is sent with `store: false`; Gemini returns JSON matching the expected change-analysis schema.
 If Gemini returns an error, the API logs the SDK error message. Check that `GEMINI_MODEL` is an exact model name supported by your Gemini API key.
 
-`POST /api/companies/test-company/simulate-change` works in production. It requires the `x-job-secret` header, fetches WhatsApp's current privacy policy, and compares it with a hardcoded copy of that policy plus sample clauses. The result is not saved.
+`POST /api/companies/test-company/simulate-change` works in production. It requires the `x-job-secret` header. The previous text is a hardcoded WhatsApp policy plus sample clauses. The current text is WhatsApp's privacy policy fetched live. The result is not saved. `ALLOW_CHANGE_SIMULATION` does not gate this route.
+
+CORS uses `FRONTEND_URL`. `*` or an empty value allows every browser origin. A comma-separated list allows only those origins.
+
+Startup seeds 10 companies and three sample changes (`isSample: true`) for WhatsApp, Instagram, and Spotify. There is no PolicyHawk Test Company row. Change reports return up to four differing sentences per side, not the full policy and not a joined word diff. Real checks still store the full normalized plain text on the policy version.
 
 ## Project setup
 
@@ -107,7 +113,7 @@ In production applications, observability is essential for understanding how you
 - **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
 - **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
 
-This project is already instrumented. Create a free account at [observe.nestjs.com](https://observe.nestjs.com), add an application, and paste the generated app key and secret into the `ObserveModule.forRoot()` call in `src/app.module.ts`.
+This app does not call `ObserveModule`. The Nest starter notes below describe optional NestJS Observe setup, separate from PolicyHawk's policy checks.
 
 The free plan needs no payment details and covers 300,000 events a month. You can also browse the [live demo](https://www.observe-demo.nestjs.com/dashboard) first - the whole dashboard over a busy service's data, with nothing to install.
 
