@@ -85,7 +85,7 @@ export class PolicyCheckController {
   @ApiOperation({
     summary: 'Simulate a policy change for the test company',
     description:
-      'Only test-company is accepted. Fetches that company live policy, compares it with the predefined earlier fixture, and returns the same report fields as a stored change. Nothing is written to the database.',
+      'Only the demo route is accepted. Fetches WhatsApp’s current privacy policy and compares it with a hardcoded copy of that policy which includes extra sample clauses. Nothing is written to the database.',
   })
   @ApiParam({ name: 'slug', example: 'test-company' })
   @ApiHeader({

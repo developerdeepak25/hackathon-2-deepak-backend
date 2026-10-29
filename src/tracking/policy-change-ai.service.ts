@@ -14,6 +14,8 @@ import {
   Importance,
 } from '../utils/constant.js';
 
+const AVAILABLE_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'] as const;
+const BLOCKED_MODELS = new Set(['gemini-3.8-flash']);
 export const POLICY_CHANGE_AI_TIMEOUT_MS = 30_000;
 const MAX_DIFF_CHARACTERS = 18_000;
 const CONTEXT_CHARACTERS = 350;
@@ -134,6 +136,25 @@ function collectErrorText(error: unknown): string {
   return parts.join(' ');
 }
 
+/** Quota, auth, and capacity failures are worth trying on another key. */
+function shouldUseNextApiKey(error: unknown): boolean {
+  const text = collectErrorText(error).toLowerCase();
+  return (
+    shouldTryFallbackModel(error) ||
+    text.includes('429') ||
+    text.includes('resource_exhausted') ||
+    text.includes('quota') ||
+    text.includes('rate limit') ||
+    text.includes('too many requests') ||
+    text.includes('api key') ||
+    text.includes('api_key') ||
+    text.includes('unauthenticated') ||
+    text.includes('permission_denied') ||
+    text.includes('401') ||
+    text.includes('403')
+  );
+}
+
 @Injectable()
 export class PolicyChangeAiService {
   private readonly logger = new Logger(PolicyChangeAiService.name);
@@ -145,9 +166,11 @@ export class PolicyChangeAiService {
     previousText: string,
     currentText: string,
   ): Promise<PolicyChangeAnalysis> {
-    const apiKey = this.config.get('GEMINI_API_KEY', { infer: true });
-    if (!apiKey) {
-      throw new ServiceUnavailableException('GEMINI_API_KEY is not configured');
+    const keys = this.geminiApiKeys();
+    if (keys.length === 0) {
+      throw new ServiceUnavailableException(
+        'No Gemini API key is configured. Set GEMINI_API_KEY, GEMINI_API_KEY_2, and GEMINI_API_KEY_3.',
+      );
     }
 
     const changedText = this.createDiffContext(previousText, currentText);
@@ -155,31 +178,69 @@ export class PolicyChangeAiService {
       throw new Error('Could not extract changed policy text for analysis');
     }
 
-    const primary = this.config.get('GEMINI_MODEL', { infer: true });
-    const fallback = this.config.get('GEMINI_FALLBACK_MODEL', { infer: true });
-    const models = [primary, fallback].filter(
-      (model, index, list) => model && list.indexOf(model) === index,
-    );
-    const client = new GoogleGenAI({ apiKey });
+    const models = this.geminiModels();
     let lastError: unknown;
 
-    for (let index = 0; index < models.length; index += 1) {
-      const model = models[index];
-      try {
-        return await this.requestAnalysis(client, model, changedText);
-      } catch (error) {
-        lastError = error;
-        const hasNext = index < models.length - 1;
-        if (!hasNext || !shouldTryFallbackModel(error)) {
+    for (let modelIndex = 0; modelIndex < models.length; modelIndex += 1) {
+      const model = models[modelIndex];
+      for (let keyIndex = 0; keyIndex < keys.length; keyIndex += 1) {
+        const client = new GoogleGenAI({ apiKey: keys[keyIndex] });
+        try {
+          return await this.requestAnalysis(client, model, changedText);
+        } catch (error) {
+          lastError = error;
+          const moreKeys = keyIndex < keys.length - 1;
+          if (moreKeys && shouldUseNextApiKey(error)) {
+            this.logger.warn(
+              `Gemini key ${keyIndex + 1} of ${keys.length} failed for model '${model}'. Trying the next key.`,
+            );
+            continue;
+          }
+          const moreModels = modelIndex < models.length - 1;
+          if (moreModels && shouldTryFallbackModel(error)) {
+            this.logger.warn(
+              `Gemini model '${model}' is unavailable. Trying '${models[modelIndex + 1]}'.`,
+            );
+            break;
+          }
           throw new Error(explainGeminiFailure(error), { cause: error });
         }
-        this.logger.warn(
-          `Gemini model '${model}' is unavailable. Trying '${models[index + 1]}'.`,
-        );
       }
     }
 
     throw new Error(explainGeminiFailure(lastError), { cause: lastError });
+  }
+
+  /** Up to three keys, in the order they should be tried. Empty values are skipped. */
+  private geminiApiKeys(): string[] {
+    return [
+      this.config.get('GEMINI_API_KEY', { infer: true }),
+      this.config.get('GEMINI_API_KEY_2', { infer: true }),
+      this.config.get('GEMINI_API_KEY_3', { infer: true }),
+    ].filter((key): key is string => Boolean(key?.trim()));
+  }
+
+  /** Lighter, high-availability models. gemini-3.8-flash is never used. */
+  private geminiModels(): string[] {
+    const requested = [
+      this.config.get('GEMINI_MODEL', { infer: true }),
+      this.config.get('GEMINI_FALLBACK_MODEL', { infer: true }),
+    ];
+    const models = requested.filter(
+      (model, index, list) =>
+        Boolean(model) &&
+        !BLOCKED_MODELS.has(model) &&
+        list.indexOf(model) === index,
+    );
+    if (requested.some((model) => BLOCKED_MODELS.has(model))) {
+      this.logger.warn(
+        'Skipping gemini-3.8-flash. Using a lighter available Gemini model instead.',
+      );
+    }
+    if (models.length > 0) {
+      return models;
+    }
+    return [...AVAILABLE_MODELS];
   }
 
   /** One Interactions API call. Capacity errors are left for the caller to retry on another model. */

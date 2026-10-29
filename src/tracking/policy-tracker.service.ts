@@ -22,7 +22,10 @@ import {
   explainGeminiFailure,
 } from './policy-change-ai.service.js';
 import { buildPolicyExcerpts } from './policy-excerpts.js';
-import { TEST_COMPANY_PRIOR_TEXT } from './test-company-prior.js';
+import {
+  WHATSAPP_MODIFIED_POLICY_TEXT,
+  WHATSAPP_SIMULATION_POLICY_URL,
+} from './whatsapp-simulation.js';
 
 const FETCH_TIMEOUT_MS = 20_000;
 const MIN_POLICY_TEXT_LENGTH = 500;
@@ -49,7 +52,7 @@ export class PolicyTrackerService {
     private readonly policyChangeAiService: PolicyChangeAiService,
   ) {}
 
-  /** Compares the test company's live policy with the predefined earlier fixture. */
+  /** Compares a hardcoded earlier WhatsApp policy with the policy fetched now. Nothing is stored. */
   async simulateChange(
     slug: string,
   ): Promise<{
@@ -79,33 +82,33 @@ export class PolicyTrackerService {
     }
 
     this.logger.warn(
-      `${company.slug}: starting a sample-only change simulation using the live policy URL`,
+      `${company.slug}: fetching WhatsApp's live policy to compare with the hardcoded modified copy`,
     );
-    let currentText: string;
+    let liveText: string;
     try {
-      currentText = await this.fetchPolicyText(company.policyUrl);
+      liveText = await this.fetchPolicyText(WHATSAPP_SIMULATION_POLICY_URL);
     } catch (error) {
       this.logger.error(
-        `${company.slug}: simulation could not fetch the live policy: ${error instanceof Error ? error.message : String(error)}`,
+        `${company.slug}: simulation could not fetch WhatsApp's policy: ${error instanceof Error ? error.message : String(error)}`,
       );
       throw new ServiceUnavailableException(
-        `Could not fetch the live policy for '${company.slug}'`,
+        'Could not fetch the live WhatsApp privacy policy',
         { cause: error },
       );
     }
-    const simulatedPreviousText = this.normalizeText(TEST_COMPANY_PRIOR_TEXT);
+    const modifiedText = this.normalizeText(WHATSAPP_MODIFIED_POLICY_TEXT);
 
     let analysis: PolicyChangeAnalysis | undefined;
     let aiNotice: string | null = null;
     try {
       analysis = await this.policyChangeAiService.analyzeChange(
-        simulatedPreviousText,
-        currentText,
+        modifiedText,
+        liveText,
       );
     } catch (error) {
       aiNotice = explainGeminiFailure(error);
       this.logger.warn(
-        `AI analysis unavailable for ${company.slug} simulation: ${error instanceof Error ? error.message : String(error)}`,
+        `AI analysis unavailable for the WhatsApp simulation: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
 
@@ -116,12 +119,12 @@ export class PolicyTrackerService {
       analysis?.whatItMeansForYou ??
       aiNotice ??
       'The captured policy text differs from the previous version. The impact has not been assessed.';
-    const excerpts = buildPolicyExcerpts(simulatedPreviousText, currentText);
+    const excerpts = buildPolicyExcerpts(modifiedText, liveText);
     this.logger.warn(
-      `${company.slug}: simulation compared the live policy with the prior fixture and was not stored`,
+      'WhatsApp simulation compared the live policy with the hardcoded modified copy and was not stored',
     );
     return {
-      companySlug: company.slug,
+      companySlug: 'whatsapp',
       status: 'changed',
       isSample: true,
       aiStatus: analysis ? 'ok' : 'fallback',

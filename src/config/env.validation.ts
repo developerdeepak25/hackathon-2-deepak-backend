@@ -37,11 +37,19 @@ export class Env {
 
   @IsOptional()
   @IsString()
-  GEMINI_MODEL: string = 'gemini-3.8-flash';
+  GEMINI_API_KEY_2?: string;
 
   @IsOptional()
   @IsString()
-  GEMINI_FALLBACK_MODEL: string = 'gemini-3.5-flash-lite';
+  GEMINI_API_KEY_3?: string;
+
+  @IsOptional()
+  @IsString()
+  GEMINI_MODEL: string = 'gemini-3.5-flash-lite';
+
+  @IsOptional()
+  @IsString()
+  GEMINI_FALLBACK_MODEL: string = 'gemini-3.1-flash-lite';
 
   @IsOptional()
   @IsIn(['true', 'false'])

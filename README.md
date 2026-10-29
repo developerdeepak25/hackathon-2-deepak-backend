@@ -40,12 +40,12 @@ To enable the GitHub Actions workflow, add these repository secrets:
 - `POLICYHAWK_API_URL`: base URL of the deployed API, without a trailing slash.
 - `JOB_SECRET`: the same secret configured on the API.
 
-When `GEMINI_API_KEY` is configured, Gemini analyzes the added and removed policy text when a change is detected. Only the diff and limited surrounding context are sent. If the key is missing or analysis fails, the change is still saved with a neutral fallback summary and `aiStatus: "fallback"`.
+When `GEMINI_API_KEY` is configured, Gemini analyzes the added and removed policy text when a change is detected. Only the diff and limited surrounding context are sent. `GEMINI_API_KEY_2` and `GEMINI_API_KEY_3` are tried, in that order, when a key hits a quota, rate limit, or outage. If the key is missing or every key fails, the change is still saved with a neutral fallback summary and `aiStatus: "fallback"`.
 
-Set `GEMINI_API_KEY` in `.env` to enable AI explanations. The integration uses Google's official `@google/genai` SDK and Interactions API. `GEMINI_MODEL` defaults to `gemini-3.8-flash`. If that model is overloaded, down, or times out, the API retries once with `GEMINI_FALLBACK_MODEL` (`gemini-3.5-flash-lite`). For a higher quality/cost tradeoff, check Google's current model list and select an available Pro model for your API key. The interaction is sent with `store: false`; Gemini returns JSON matching the expected change-analysis schema.
+Set the Gemini keys in `.env` to enable AI explanations. The integration uses Google's official `@google/genai` SDK and Interactions API. `GEMINI_MODEL` defaults to `gemini-3.5-flash-lite`. If that model is down or times out, the API tries `GEMINI_FALLBACK_MODEL` (`gemini-3.1-flash-lite`). `gemini-3.8-flash` is not used. The interaction is sent with `store: false`; Gemini returns JSON matching the expected change-analysis schema.
 If Gemini returns an error, the API logs the SDK error message. Check that `GEMINI_MODEL` is an exact model name supported by your Gemini API key.
 
-`POST /api/companies/test-company/simulate-change` works in production. It requires the `x-job-secret` header, fetches the live policy, compares it with the predefined earlier fixture, and returns the same report fields as a stored change. The result is not saved.
+`POST /api/companies/test-company/simulate-change` works in production. It requires the `x-job-secret` header, fetches WhatsApp's current privacy policy, and compares it with a hardcoded copy of that policy plus sample clauses. The result is not saved.
 
 ## Project setup
 
