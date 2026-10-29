@@ -22,10 +22,10 @@ export class Env {
   @Max(65535)
   PORT: number = 4000;
 
-  // Comma-separated list of allowed CORS origins
+  // `*` allows every origin. Otherwise a comma-separated allow-list.
   @IsOptional()
   @IsString()
-  FRONTEND_URL: string = 'http://localhost:3000';
+  FRONTEND_URL: string = '*';
 
   @IsOptional()
   @IsString()

@@ -14,12 +14,9 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api');
   app.enableCors({
-    origin: config
-      .get('FRONTEND_URL', { infer: true })
-      .split(',')
-      .map((origin) => origin.trim())
-      .filter(Boolean),
-    methods: ['GET', 'POST'],
+    origin: resolveCorsOrigin(config.get('FRONTEND_URL', { infer: true })),
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Accept', 'Authorization', 'x-job-secret'],
   });
   app.enableShutdownHooks();
 
@@ -41,3 +38,15 @@ async function bootstrap() {
 }
 
 await bootstrap();
+
+/** `*` allows every browser origin. Any other value is a comma-separated allow-list. */
+function resolveCorsOrigin(frontendUrl: string): true | string[] {
+  const origins = frontendUrl
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  if (origins.length === 0 || origins.includes('*')) {
+    return true;
+  }
+  return origins;
+}
