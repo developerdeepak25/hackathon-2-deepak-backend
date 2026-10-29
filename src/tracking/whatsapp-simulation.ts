@@ -11,7 +11,6 @@ export const WHATSAPP_SIMULATION_POLICY_URL =
 
 /** Sample clauses inserted ahead of the captured WhatsApp policy. */
 export const WHATSAPP_SIMULATION_EXTRA_POINTS = [
-  'Sample clauses added for this PolicyHawk demonstration. WhatsApp did not publish this section.',
   'We may use the content of your messages, including photos and voice notes, to train and improve our artificial intelligence models.',
   'We may sell your personal information, including your phone number, contact list, and usage data, to advertising partners.',
   'If you delete your account, we keep a copy of your messages and contacts for five years so we can measure advertising.',
