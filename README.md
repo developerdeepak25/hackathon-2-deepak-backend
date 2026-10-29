@@ -45,7 +45,7 @@ When `GEMINI_API_KEY` is configured, Gemini analyzes the added and removed polic
 Set `GEMINI_API_KEY` in `.env` to enable AI explanations. The integration uses Google's official `@google/genai` SDK and Interactions API. `GEMINI_MODEL` defaults to `gemini-3.8-flash`. If that model is overloaded, down, or times out, the API retries once with `GEMINI_FALLBACK_MODEL` (`gemini-3.5-flash-lite`). For a higher quality/cost tradeoff, check Google's current model list and select an available Pro model for your API key. The interaction is sent with `store: false`; Gemini returns JSON matching the expected change-analysis schema.
 If Gemini returns an error, the API logs the SDK error message. Check that `GEMINI_MODEL` is an exact model name supported by your Gemini API key.
 
-To manually exercise the diff and AI flow without changing a real policy baseline, set `ALLOW_CHANGE_SIMULATION=true` in a non-production `.env` and restart the API. Then call `POST /api/companies/{slug}/simulate-change` in Swagger with the `x-job-secret` header; no request body or policy text is needed. The endpoint fetches the live policy, creates a synthetic prior copy with sample-only wording, and stores both versions and the result as sample data (`isSample: true`). It never updates `lastCheckedAt` or real policy versions, and it is disabled in production. Simulated wording and AI explanations must not be treated as actual company policy changes.
+`POST /api/companies/test-company/simulate-change` works in production. It requires the `x-job-secret` header, fetches the live policy, compares it with the predefined earlier fixture, and returns the same report fields as a stored change. The result is not saved.
 
 ## Project setup
 
