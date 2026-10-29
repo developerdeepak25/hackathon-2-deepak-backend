@@ -26,6 +26,7 @@ export interface CompanyListEntry {
   lastFetchStatus: 'ok' | 'failed' | 'never';
   todayChangeCount: number;
   changeCount: number;
+  hasSampleChange: boolean;
 }
 
 @Injectable()
@@ -50,7 +51,7 @@ export class CompanyService {
     todayEnd.setUTCDate(todayEnd.getUTCDate() + 1);
 
     // Fetch the small company list and grouped change counts concurrently.
-    const [companies, dailyCounts, totalCounts] = await Promise.all([
+    const [companies, dailyCounts, totalCounts, sampleCounts] = await Promise.all([
       this.companyModel
         .find(
           { isActive: true, slug: { $ne: TEST_COMPANY_SLUG } },
@@ -97,6 +98,17 @@ export class CompanyService {
           },
         ])
         .exec(),
+      this.changeModel
+        .aggregate<{ _id: string; count: number }>([
+          { $match: { isSample: true } },
+          {
+            $group: {
+              _id: '$companyId',
+              count: { $sum: 1 },
+            },
+          },
+        ])
+        .exec(),
     ]);
 
     // Convert aggregation results into constant-time lookups while formatting each company.
@@ -107,6 +119,10 @@ export class CompanyService {
     const totalByCompany = new Map<string, number>();
     for (const item of totalCounts) {
       totalByCompany.set(String(item._id), item.count);
+    }
+    const sampleByCompany = new Map<string, number>();
+    for (const item of sampleCounts) {
+      sampleByCompany.set(String(item._id), item.count);
     }
 
     return {
@@ -123,6 +139,7 @@ export class CompanyService {
         lastFetchStatus: company.lastFetchStatus,
         todayChangeCount: countByCompany.get(String(company._id)) ?? 0,
         changeCount: totalByCompany.get(String(company._id)) ?? 0,
+        hasSampleChange: (sampleByCompany.get(String(company._id)) ?? 0) > 0,
       })),
     };
   }
@@ -362,6 +379,8 @@ export class CompanyService {
           detectedAt: new Date(change.detectedAt).toISOString(),
           summary: change.summary,
           importance: change.importance,
+          tags: change.tags ?? [],
+          whatItMeansForYou: change.whatItMeansForYou,
           isSample: change.isSample,
           aiStatus: change.aiStatus,
         };

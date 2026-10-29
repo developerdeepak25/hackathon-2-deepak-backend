@@ -30,5 +30,5 @@ export type JobStatus = (typeof JOB_STATUSES)[number];
 export const JOB_TRIGGERS = ['cron', 'github-action', 'manual'] as const;
 export type JobTrigger = (typeof JOB_TRIGGERS)[number];
 
-/** Demo company used only by simulate-change. Excluded from the public list and daily job. */
+/** Route slug for the unsaved WhatsApp simulation. It is not a company in the database. */
 export const TEST_COMPANY_SLUG = 'test-company';

@@ -74,22 +74,16 @@ export class PolicyTrackerService {
     if (slug !== TEST_COMPANY_SLUG) {
       throw new NotFoundException(`Company '${slug}' was not found`);
     }
-    const company = await this.companyModel
-      .findOne({ slug: TEST_COMPANY_SLUG, isActive: true })
-      .exec();
-    if (!company) {
-      throw new NotFoundException(`Company '${slug}' was not found`);
-    }
 
     this.logger.warn(
-      `${company.slug}: fetching WhatsApp's live policy to compare with the hardcoded modified copy`,
+      'Fetching WhatsApp live policy to compare with the hardcoded modified copy',
     );
     let liveText: string;
     try {
       liveText = await this.fetchPolicyText(WHATSAPP_SIMULATION_POLICY_URL);
     } catch (error) {
       this.logger.error(
-        `${company.slug}: simulation could not fetch WhatsApp's policy: ${error instanceof Error ? error.message : String(error)}`,
+        `Simulation could not fetch WhatsApp's policy: ${error instanceof Error ? error.message : String(error)}`,
       );
       throw new ServiceUnavailableException(
         'Could not fetch the live WhatsApp privacy policy',
